@@ -1,4 +1,6 @@
 const Sequelize = require('sequelize');
+const jwt = require('jsonwebtoken')
+const bcrypt = require('bcrypt')
 const { STRING } = Sequelize;
 const config = {
   logging: false
@@ -16,11 +18,14 @@ const User = conn.define('user', {
 
 User.byToken = async(token)=> {
   try {
-    const user = await User.findByPk(token);
+    const payload =  jwt.verify(token, process.env.JWT);
+    console.log("payload", payload)
+    const user = await User.findByPk(payload.id)
     if(user){
       return user;
     }
     const error = Error('bad credentials');
+    console.log("payload", payload);
     error.status = 401;
     throw error;
   }
@@ -30,18 +35,22 @@ User.byToken = async(token)=> {
     throw error;
   }
 };
+User.beforeCreate(async (user) => {
+  user.password = await bcrypt.hash(user.password, 10);
+})
 
 User.authenticate = async({ username, password })=> {
   const user = await User.findOne({
     where: {
       username,
-      password
     }
   });
-  if(user){
-    return user.id;
+  if(user && await bcrypt.compare(password, user.password)){
+    return jwt.sign({ id: user.id }, process.env.JWT);
+
   }
   const error = Error('bad credentials');
+  console.log(await bcrypt.hash(password, 10));
   error.status = 401;
   throw error;
 };
@@ -64,6 +73,7 @@ const syncAndSeed = async()=> {
     }
   };
 };
+
 
 module.exports = {
   syncAndSeed,
